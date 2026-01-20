@@ -25,12 +25,11 @@
             70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
             100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
         }
-        button, .filter-btn { cursor: pointer; user-select: none; }
+        button, .filter-btn, .row-edit { cursor: pointer !important; user-select: none; }
     </style>
 </head>
 <body class="min-h-screen custom-scroll overflow-x-hidden">
 
-    <!-- Header Navigation -->
     <header class="sticky top-0 z-[60] glass-panel border-b border-white/5 px-4 md:px-8 py-4 flex items-center justify-between">
         <div class="flex items-center gap-3 md:gap-4">
             <i class="fas fa-microchip text-indigo-500 text-2xl md:text-3xl"></i>
@@ -54,7 +53,6 @@
     </header>
 
     <main class="max-w-[1600px] mx-auto p-4 md:p-10 space-y-6 md:space-y-10">
-        <!-- Analytics Dashboard -->
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
             <div class="glass-panel p-6 rounded-[1.5rem]">
                 <p class="text-[10px] uppercase font-black text-slate-500 tracking-widest mb-1">Total Value</p>
@@ -80,7 +78,6 @@
             </div>
         </div>
 
-        <!-- Toolbar -->
         <div class="flex flex-col lg:flex-row gap-4 items-center justify-between">
             <div class="relative w-full lg:w-1/2">
                 <i class="fas fa-search absolute left-6 top-1/2 -translate-y-1/2 text-slate-500"></i>
@@ -94,7 +91,6 @@
             </div>
         </div>
 
-        <!-- Registry Table -->
         <div class="glass-panel rounded-[1.5rem] overflow-hidden">
             <div class="overflow-x-auto">
                 <table class="w-full text-left">
@@ -107,14 +103,13 @@
                         </tr>
                     </thead>
                     <tbody id="table-body" class="divide-y divide-white/5">
-                        <tr><td colspan="4" class="py-20 text-center text-slate-600 font-black uppercase text-[10px] tracking-widest">Awakening Systems...</td></tr>
+                        <tr><td colspan="4" class="py-20 text-center text-slate-600 font-black uppercase text-[10px] tracking-widest">Awaiting Command...</td></tr>
                     </tbody>
                 </table>
             </div>
         </div>
     </main>
 
-    <!-- Modal -->
     <div id="modal" class="fixed inset-0 bg-black/95 backdrop-blur-xl z-[100] hidden items-center justify-center p-4 overflow-y-auto">
         <div class="bg-[#0f172a] w-full max-w-4xl rounded-[2.5rem] border border-white/10 p-8 shadow-2xl relative">
             <button id="modal-close" class="absolute top-6 right-6 text-slate-500 hover:text-white p-2 transition-colors"><i class="fas fa-times text-xl"></i></button>
@@ -155,227 +150,238 @@
         import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        const firebaseConfig = JSON.parse(__firebase_config);
-        const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
-        const db = getFirestore(app);
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'hq-contracts-intel';
-        
-        let registry = [];
-        let currentFilter = 'all';
-        let currentUser = null;
-
-        // UI Helpers
-        const setStatus = (txt, color) => {
-            const dot = document.getElementById('sync-dot');
-            const status = document.getElementById('sync-text');
-            dot.className = `w-1.5 h-1.5 rounded-full ${color}`;
-            status.innerText = txt;
-        };
-
-        const checkExpiry = (date) => {
-            if (!date) return false;
-            const end = new Date(date);
-            const now = new Date();
-            const diff = (end - now) / (1000 * 60 * 60 * 24);
-            return diff >= 0 && diff <= 7;
-        };
-
-        const render = () => {
-            const table = document.getElementById('table-body');
-            const search = document.getElementById('search-input').value.toLowerCase();
+        document.addEventListener('DOMContentLoaded', () => {
+            const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+            const appId = typeof __app_id !== 'undefined' ? __app_id : 'hq-contracts-intel';
             
-            const filtered = registry.filter(r => {
-                const match = (r.customer + r.company + r.cr + r.ref).toLowerCase().includes(search);
-                if (currentFilter === 'all') return match;
-                if (currentFilter === 'Expiring') return match && checkExpiry(r.end);
-                return match && r.status === currentFilter;
-            });
-
-            if (!filtered.length) {
-                table.innerHTML = `<tr><td colspan="4" class="py-20 text-center text-slate-600 font-black uppercase text-[10px] tracking-widest">No signals found</td></tr>`;
-                return;
-            }
-
-            table.innerHTML = filtered.map(r => {
-                const exp = checkExpiry(r.end);
-                return `
-                    <tr class="row-edit group cursor-pointer hover:bg-white/[0.02] border-b border-white/5" data-id="${r.id}">
-                        <td class="px-8 py-6">
-                            <div class="flex items-center gap-4">
-                                <div class="w-10 h-10 ${exp ? 'bg-red-500/20 text-red-400' : 'bg-slate-800 text-slate-500'} rounded-xl flex items-center justify-center group-hover:bg-indigo-600 group-hover:text-white transition-all">
-                                    <i class="fas ${exp ? 'fa-clock' : 'fa-folder'}"></i>
-                                </div>
-                                <div>
-                                    <p class="text-xs font-black text-white">${r.customer}</p>
-                                    <p class="text-[9px] font-bold text-slate-500 uppercase tracking-tighter">${r.company}</p>
-                                </div>
-                            </div>
-                        </td>
-                        <td class="px-8 py-6">
-                            <p class="text-[10px] font-black ${exp ? 'text-red-400' : 'text-indigo-400'} uppercase tracking-widest">${r.month}</p>
-                            <p class="text-[8px] text-slate-500 uppercase font-bold mt-1">End: ${r.end}</p>
-                        </td>
-                        <td class="px-8 py-6 hidden md:table-cell">
-                            <p class="text-[10px] font-bold text-slate-300 uppercase">${r.activity}</p>
-                            <p class="text-[8px] text-slate-500 font-mono mt-1">REF: ${r.ref}</p>
-                        </td>
-                        <td class="px-8 py-6 text-right">
-                            <p class="font-black text-sm">$${parseFloat(r.payment).toLocaleString()}</p>
-                            <span class="text-[7px] font-black uppercase px-2 py-0.5 rounded ${r.status === 'Paid' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-amber-500/10 text-amber-400'}">
-                                ${r.status}
-                            </span>
-                        </td>
-                    </tr>
-                `;
-            }).join('');
-
-            document.querySelectorAll('.row-edit').forEach(el => {
-                el.onclick = () => open(el.dataset.id);
-            });
-        };
-
-        const updateUI = () => {
-            const total = registry.reduce((s, r) => s + (parseFloat(r.payment) || 0), 0);
-            const paid = registry.filter(r => r.status === 'Paid').reduce((s, r) => s + (parseFloat(r.payment) || 0), 0);
-            const alerts = registry.filter(r => checkExpiry(r.end)).length;
-
-            document.getElementById('stat-total').innerText = `$${total.toLocaleString()}`;
-            document.getElementById('stat-paid').innerText = `$${paid.toLocaleString()}`;
-            document.getElementById('stat-count').innerText = `${registry.length} Records`;
-            document.getElementById('liquidity-bar').style.width = `${total ? (paid/total)*100 : 0}%`;
-
-            const alertBox = document.getElementById('expiry-alerts');
-            if (alerts > 0) {
-                alertBox.innerHTML = `<div class="bg-red-500 text-white px-3 py-1 rounded text-[8px] font-black uppercase alert-pulse">${alerts} Critical Expiries</div>`;
-            } else {
-                alertBox.innerHTML = `<div class="bg-emerald-500/10 text-emerald-400 px-3 py-1 rounded text-[8px] font-black uppercase border border-emerald-500/20">System Nominal</div>`;
-            }
-            render();
-        };
-
-        const open = (id = null) => {
-            const modal = document.getElementById('modal');
-            const form = document.getElementById('intel-form');
-            form.reset();
-            document.getElementById('edit-id').value = "";
-            document.getElementById('delete-btn').classList.add('hidden');
+            const app = initializeApp(firebaseConfig);
+            const auth = getAuth(app);
+            const db = getFirestore(app);
             
-            if (id) {
-                const r = registry.find(x => x.id === id);
-                if (r) {
-                    document.getElementById('edit-id').value = r.id;
-                    document.getElementById('f-company').value = r.company;
-                    document.getElementById('f-customer').value = r.customer;
-                    document.getElementById('f-cust-num').value = r.cust_num;
-                    document.getElementById('f-start').value = r.start;
-                    document.getElementById('f-end').value = r.end;
-                    document.getElementById('f-pay-month').value = r.month;
-                    document.getElementById('f-cr').value = r.cr;
-                    document.getElementById('f-tax').value = r.tax;
-                    document.getElementById('f-ref').value = r.ref;
-                    document.getElementById('f-payment').value = r.payment;
-                    document.getElementById('f-activity').value = r.activity;
-                    document.getElementById('f-status').value = r.status;
-                    document.getElementById('delete-btn').classList.remove('hidden');
+            let registry = [];
+            let currentFilter = 'all';
+            let currentUser = null;
+
+            const setStatus = (txt, color) => {
+                const dot = document.getElementById('sync-dot');
+                const status = document.getElementById('sync-text');
+                if (dot && status) {
+                    dot.className = `w-1.5 h-1.5 rounded-full ${color}`;
+                    status.innerText = txt;
                 }
-            }
-            modal.classList.remove('hidden');
-            modal.classList.add('flex');
-        };
-
-        const close = () => {
-            document.getElementById('modal').classList.add('hidden');
-            document.getElementById('modal').classList.remove('flex');
-        };
-
-        // Event Listeners - Direct Bindings
-        document.getElementById('btn-new-entry').onclick = () => open();
-        document.getElementById('modal-close').onclick = close;
-        document.getElementById('modal-cancel').onclick = close;
-        document.getElementById('search-input').oninput = render;
-
-        document.getElementById('intel-form').onsubmit = async (e) => {
-            e.preventDefault();
-            if (!currentUser) return;
-            setStatus('Syncing...', 'bg-amber-500 animate-pulse');
-            
-            const id = document.getElementById('edit-id').value || crypto.randomUUID();
-            const data = {
-                id,
-                company: document.getElementById('f-company').value,
-                customer: document.getElementById('f-customer').value,
-                cust_num: document.getElementById('f-cust-num').value,
-                start: document.getElementById('f-start').value,
-                end: document.getElementById('f-end').value,
-                month: document.getElementById('f-pay-month').value,
-                cr: document.getElementById('f-cr').value,
-                tax: document.getElementById('f-tax').value,
-                ref: document.getElementById('f-ref').value,
-                payment: parseFloat(document.getElementById('f-payment').value) || 0,
-                activity: document.getElementById('f-activity').value,
-                status: document.getElementById('f-status').value,
-                updated: Date.now()
             };
 
-            try {
-                await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'contracts', id), data);
-                close();
-            } catch (err) { console.error(err); }
-        };
+            const checkExpiry = (date) => {
+                if (!date) return false;
+                const end = new Date(date);
+                const now = new Date();
+                const diff = (end - now) / (1000 * 60 * 60 * 24);
+                return diff >= 0 && diff <= 7;
+            };
 
-        document.getElementById('delete-btn').onclick = async () => {
-            const id = document.getElementById('edit-id').value;
-            if (id && confirm('Purge record?')) {
-                await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'contracts', id));
-                close();
-            }
-        };
-
-        document.querySelectorAll('.filter-btn').forEach(btn => {
-            btn.onclick = () => {
-                currentFilter = btn.dataset.filter;
-                document.querySelectorAll('.filter-btn').forEach(b => {
-                    b.className = `filter-btn px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${currentFilter === b.dataset.filter ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`;
+            const render = () => {
+                const table = document.getElementById('table-body');
+                const search = document.getElementById('search-input').value.toLowerCase();
+                
+                const filtered = registry.filter(r => {
+                    const match = (r.customer + r.company + r.cr + r.ref).toLowerCase().includes(search);
+                    if (currentFilter === 'all') return match;
+                    if (currentFilter === 'Expiring') return match && checkExpiry(r.end);
+                    return match && r.status === currentFilter;
                 });
+
+                if (!filtered.length) {
+                    table.innerHTML = `<tr><td colspan="4" class="py-20 text-center text-slate-600 font-black uppercase text-[10px] tracking-widest">No signals found</td></tr>`;
+                    return;
+                }
+
+                table.innerHTML = filtered.map(r => {
+                    const exp = checkExpiry(r.end);
+                    return `
+                        <tr class="row-edit group cursor-pointer hover:bg-white/[0.02] border-b border-white/5" data-id="${r.id}">
+                            <td class="px-8 py-6">
+                                <div class="flex items-center gap-4">
+                                    <div class="w-10 h-10 ${exp ? 'bg-red-500/20 text-red-400' : 'bg-slate-800 text-slate-500'} rounded-xl flex items-center justify-center group-hover:bg-indigo-600 group-hover:text-white transition-all">
+                                        <i class="fas ${exp ? 'fa-clock' : 'fa-folder'}"></i>
+                                    </div>
+                                    <div>
+                                        <p class="text-xs font-black text-white">${r.customer}</p>
+                                        <p class="text-[9px] font-bold text-slate-500 uppercase tracking-tighter">${r.company}</p>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="px-8 py-6">
+                                <p class="text-[10px] font-black ${exp ? 'text-red-400' : 'text-indigo-400'} uppercase tracking-widest">${r.month}</p>
+                                <p class="text-[8px] text-slate-500 uppercase font-bold mt-1">End: ${r.end}</p>
+                            </td>
+                            <td class="px-8 py-6 hidden md:table-cell">
+                                <p class="text-[10px] font-bold text-slate-300 uppercase">${r.activity}</p>
+                                <p class="text-[8px] text-slate-500 font-mono mt-1">REF: ${r.ref}</p>
+                            </td>
+                            <td class="px-8 py-6 text-right">
+                                <p class="font-black text-sm">$${parseFloat(r.payment).toLocaleString()}</p>
+                                <span class="text-[7px] font-black uppercase px-2 py-0.5 rounded ${r.status === 'Paid' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-amber-500/10 text-amber-400'}">
+                                    ${r.status}
+                                </span>
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+
+                document.querySelectorAll('.row-edit').forEach(el => {
+                    el.addEventListener('click', () => open(el.dataset.id));
+                });
+            };
+
+            const updateUI = () => {
+                const total = registry.reduce((s, r) => s + (parseFloat(r.payment) || 0), 0);
+                const paid = registry.filter(r => r.status === 'Paid').reduce((s, r) => s + (parseFloat(r.payment) || 0), 0);
+                const alerts = registry.filter(r => checkExpiry(r.end)).length;
+
+                document.getElementById('stat-total').innerText = `$${total.toLocaleString()}`;
+                document.getElementById('stat-paid').innerText = `$${paid.toLocaleString()}`;
+                document.getElementById('stat-count').innerText = `${registry.length} Records`;
+                document.getElementById('liquidity-bar').style.width = `${total ? (paid/total)*100 : 0}%`;
+
+                const alertBox = document.getElementById('expiry-alerts');
+                if (alerts > 0) {
+                    alertBox.innerHTML = `<div class="bg-red-500 text-white px-3 py-1 rounded text-[8px] font-black uppercase alert-pulse">${alerts} Critical Expiries</div>`;
+                } else {
+                    alertBox.innerHTML = `<div class="bg-emerald-500/10 text-emerald-400 px-3 py-1 rounded text-[8px] font-black uppercase border border-emerald-500/20">System Nominal</div>`;
+                }
                 render();
             };
-        });
 
-        document.getElementById('btn-export').onclick = () => {
-            if (!registry.length) return;
-            const headers = "Customer,Company,Month,End,Amount,Status\n";
-            const csv = headers + registry.map(r => `"${r.customer}","${r.company}","${r.month}","${r.end}",${r.payment},"${r.status}"`).join('\n');
-            const blob = new Blob([csv], { type: 'text/csv' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `HQ_Intel_${new Date().toISOString().split('T')[0]}.csv`;
-            a.click();
-        };
+            const open = (id = null) => {
+                const modal = document.getElementById('modal');
+                const form = document.getElementById('intel-form');
+                form.reset();
+                document.getElementById('edit-id').value = "";
+                document.getElementById('delete-btn').classList.add('hidden');
+                document.getElementById('modal-title').innerText = id ? "Modify Intel Record" : "New Intel Record";
+                
+                if (id) {
+                    const r = registry.find(x => x.id === id);
+                    if (r) {
+                        document.getElementById('edit-id').value = r.id;
+                        document.getElementById('f-company').value = r.company || "";
+                        document.getElementById('f-customer').value = r.customer || "";
+                        document.getElementById('f-cust-num').value = r.cust_num || "";
+                        document.getElementById('f-start').value = r.start || "";
+                        document.getElementById('f-end').value = r.end || "";
+                        document.getElementById('f-pay-month').value = r.month || "";
+                        document.getElementById('f-cr').value = r.cr || "";
+                        document.getElementById('f-tax').value = r.tax || "";
+                        document.getElementById('f-ref').value = r.ref || "";
+                        document.getElementById('f-payment').value = r.payment || 0;
+                        document.getElementById('f-activity').value = r.activity || "";
+                        document.getElementById('f-status').value = r.status || "Pending";
+                        document.getElementById('delete-btn').classList.remove('hidden');
+                    }
+                }
+                modal.classList.remove('hidden');
+                modal.classList.add('flex');
+            };
 
-        // Lifecycle
-        onAuthStateChanged(auth, u => {
-            currentUser = u;
-            if (u) {
+            const close = () => {
+                document.getElementById('modal').classList.add('hidden');
+                document.getElementById('modal').classList.remove('flex');
+            };
+
+            // Event Listeners
+            document.getElementById('btn-new-entry').addEventListener('click', () => open());
+            document.getElementById('modal-close').addEventListener('click', close);
+            document.getElementById('modal-cancel').addEventListener('click', close);
+            document.getElementById('search-input').addEventListener('input', render);
+
+            document.getElementById('intel-form').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                if (!currentUser) return;
+                setStatus('Syncing...', 'bg-amber-500 animate-pulse');
+                
+                const id = document.getElementById('edit-id').value || crypto.randomUUID();
+                const data = {
+                    id,
+                    company: document.getElementById('f-company').value,
+                    customer: document.getElementById('f-customer').value,
+                    cust_num: document.getElementById('f-cust-num').value,
+                    start: document.getElementById('f-start').value,
+                    end: document.getElementById('f-end').value,
+                    month: document.getElementById('f-pay-month').value,
+                    cr: document.getElementById('f-cr').value,
+                    tax: document.getElementById('f-tax').value,
+                    ref: document.getElementById('f-ref').value,
+                    payment: parseFloat(document.getElementById('f-payment').value) || 0,
+                    activity: document.getElementById('f-activity').value,
+                    status: document.getElementById('f-status').value,
+                    updated: Date.now()
+                };
+
+                try {
+                    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'contracts', id), data);
+                    close();
+                } catch (err) { console.error(err); }
                 setStatus('Cloud Secure', 'bg-emerald-500');
-                onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'contracts'), s => {
-                    registry = s.docs.map(d => d.data());
-                    updateUI();
+            });
+
+            document.getElementById('delete-btn').addEventListener('click', async () => {
+                const id = document.getElementById('edit-id').value;
+                if (id && confirm('Purge record?')) {
+                    await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'contracts', id));
+                    close();
+                }
+            });
+
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    currentFilter = btn.dataset.filter;
+                    document.querySelectorAll('.filter-btn').forEach(b => {
+                        b.className = `filter-btn px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${currentFilter === b.dataset.filter ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`;
+                    });
+                    render();
                 });
-            }
+            });
+
+            document.getElementById('btn-export').addEventListener('click', () => {
+                if (!registry.length) return;
+                const headers = "Customer,Company,Month,End,Amount,Status\n";
+                const csv = headers + registry.map(r => `"${r.customer}","${r.company}","${r.month}","${r.end}",${r.payment},"${r.status}"`).join('\n');
+                const blob = new Blob([csv], { type: 'text/csv' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `HQ_Intel_${new Date().toISOString().split('T')[0]}.csv`;
+                a.click();
+            });
+
+            // Auth & Start
+            onAuthStateChanged(auth, u => {
+                currentUser = u;
+                if (u) {
+                    setStatus('Cloud Secure', 'bg-emerald-500');
+                    onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'contracts'), s => {
+                        registry = s.docs.map(d => d.data());
+                        updateUI();
+                    });
+                }
+            });
+
+            const startAuth = async () => {
+                setStatus('Connecting...', 'bg-amber-500 animate-pulse');
+                try {
+                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                        await signInWithCustomToken(auth, __initial_auth_token);
+                    } else {
+                        await signInAnonymously(auth);
+                    }
+                } catch (err) {
+                    console.error("Auth error:", err);
+                    setStatus('Offline', 'bg-red-500');
+                }
+            };
+
+            startAuth();
         });
-
-        const start = async () => {
-            setStatus('Connecting...', 'bg-amber-500 animate-pulse');
-            if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                await signInWithCustomToken(auth, __initial_auth_token);
-            } else {
-                await signInAnonymously(auth);
-            }
-        };
-
-        start();
     </script>
 </body>
 </html>
